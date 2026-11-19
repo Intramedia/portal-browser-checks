@@ -4,12 +4,20 @@ import { chromium } from 'playwright';
 const origin = 'https://www.valtorres.com';
 const id = 'G-41Y73RQ4Q8';
 const marker = 'syntheticqa157';
-const browser = await chromium.launch({channel:'chrome', headless:false});
+const archivedReplay = process.env.PORTAL_ARCHIVED_REPLAY === '1';
+const browser = await chromium.launch({
+  channel:'chrome', headless:false,
+  args: archivedReplay ? ['--host-resolver-rules=MAP *.google-analytics.com ~NOTFOUND, MAP *.googletagmanager.com ~NOTFOUND, MAP *.analytics.google.com ~NOTFOUND, MAP *.doubleclick.net ~NOTFOUND'] : []
+});
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const gaCookie = c => /^_(ga($|_)|gid$|gat($|_))/.test(c.name);
 async function run(lang, mode) {
-  const context = await browser.newContext({locale:lang});
+  const context = await browser.newContext({locale:lang,serviceWorkers:archivedReplay?'block':'allow'});
   try {
+    if(process.env.PORTAL_ARCHIVED_REPLAY==='1'){
+      const {installArchivedReplay}=await import('./replay-route-157.mjs');
+      await installArchivedReplay(context);
+    }
     const both = ['dnt','gpc','private'].includes(mode);
     if (both || mode === 'first') {
       const names = both ? ['vt_analytics','vt_ga4_consent'] : ['vt_analytics'];
@@ -53,7 +61,9 @@ async function run(lang, mode) {
     if (mode === 'private') {
       for (const path of ['/sign-in','/account','/admin','/reply/'+marker]) {await visit(path); await quiet();}
     } else {
-      await visit('?q='+marker+'&email='+marker+'%40example.test&token='+marker);
+      // The homepage redirects q searches to /listings. Keep this observation on the homepage.
+      await visit('?email='+marker+'%40example.test&token='+marker);
+      assert.equal(new URL(page.url()).pathname, '/'+lang);
       await quiet();
       const dialog=page.getByRole('dialog').filter({has:page.locator('input[type=checkbox]')});
       if (mode==='reject') {
@@ -63,13 +73,29 @@ async function run(lang, mode) {
       if (mode==='yes') {
         await dialog.getByRole('checkbox').check();
         await dialog.getByRole('button',{name:/accept|aceptar/i}).click();
-        for(let i=0;i<12 && !hits.some(h=>h.event==='page_view');i++) await pause(1000);
+        const expectedView = h => h.event === 'page_view' && h.id === id && h.location === origin+'/'+lang;
+        for (let i=0; i<12 && !hits.some(expectedView) && violations.length===0; i++) await pause(1000);
+        if (!hits.some(expectedView) || violations.length) {
+          const consent = await context.cookies(origin);
+          const granted = name => consent.some(c=>c.name===name && c.value==='granted');
+          const tagFrame = page.frames().find(f=>f.parentFrame() && [origin+'/ga4-context.html',origin+'/'+lang].includes(f.url()));
+          console.log(JSON.stringify({lang,mode,diagnostic:{
+            firstPartyGranted:granted('vt_analytics'),googleGranted:granted('vt_ga4_consent'),
+            framePresent:Boolean(tagFrame),sanitizedFrame:tagFrame?.url()===origin+'/'+lang,
+            tagElement:tagFrame ? await tagFrame.locator('script[src^="https://www.googletagmanager.com/gtag/js"]').count()>0 : false,
+            googleRequests:hits.length,pageViews:hits.filter(h=>h.event==='page_view').length,
+            expectedStreamPageViews:hits.filter(h=>h.event==='page_view' && h.id===id).length,
+            unexpectedLocation:violations.includes('unexpected location')
+          }}));
+        }
         assert.deepEqual(violations,[]);
         const view=hits.find(h=>h.event==='page_view' && h.id===id && h.location===origin+'/'+lang);
         assert.ok(view,'no sanitized page_view from real tag');
         console.log(JSON.stringify({lang,mode,view}));
+        await visit('/listings?q='+marker);
+        assert.deepEqual(violations,[]);
         await visit('/listings');
-        const href=await page.locator('main a[href]').evaluateAll(links=>links.map(a=>a.getAttribute('href')).find(path=>/^\/(?:en|es)\/listings\/[a-z0-9-]+\/?$/.test(path)));
+        const href=await page.locator('main a[href]').evaluateAll(links=>links.map(a=>a.getAttribute('href')).find(path=>/^\/(?:en|es)\/listings\/[a-z0-9-]+\/?$/.test(path) && !['new','search','inquire','map','saved'].includes(path.split('/').filter(Boolean).at(-1))));
         assert.ok(href,'no public listing detail link for slug check');
         const slug=href.split('/').filter(Boolean).at(-1);
         let leaked=false;
@@ -78,7 +104,17 @@ async function run(lang, mode) {
               [r.url(),r.postData()||'',r.headers().referer||''].some(x=>x.includes(slug))) leaked=true;
         });
         await visit('/listings/'+slug+'?q='+marker);
-        await pause(2500);
+        for(let i=0;i<12&&!hits.some(h=>h.event==='listing_view' && h.location===origin+'/'+lang+'/listings/detail');i++)await pause(1000);
+        if(!hits.some(h=>h.event==='listing_view' && h.location===origin+'/'+lang+'/listings/detail')){
+          const current=new URL(page.url());
+          console.log(JSON.stringify({lang,listingDiagnostic:{
+            reachedSelectedDetail:current.pathname.replace(/\/$/,'')===href.replace(/\/$/,''),
+            reservedRoute:['new','search','inquire','map','saved'].includes(slug),
+            frame:page.frames().some(f=>f.parentFrame() && f.url()===origin+'/'+lang+'/listings/detail'),
+            targetPageViews:hits.filter(h=>h.event==='page_view'&&h.id===id).length,
+            listingEvents:hits.filter(h=>h.event==='listing_view').length
+          }}));
+        }
         assert.equal(leaked,false,'listing slug transmitted');
         assert.ok(hits.some(h=>h.event==='listing_view' && h.location===origin+'/'+lang+'/listings/detail'),'missing sanitized listing view');
         await visit('/contact?q='+marker);
@@ -101,5 +137,10 @@ async function run(lang, mode) {
   } finally {await context.close();}
 }
 try {
-  for(const lang of ['en','es']) for(const mode of ['fresh','first','reject','dnt','gpc','private','yes']) await run(lang,mode);
+  for(const lang of ['en','es']) for(const mode of ['fresh','first','reject','dnt','gpc','private','yes']){
+    try{await run(lang,mode);}catch(error){
+      if(process.env.PORTAL_ARCHIVED_REPLAY!=='1')throw error;
+      console.error(lang,mode,error.message.split('\n')[0]);process.exitCode=1;
+    }
+  }
 } finally {await browser.close();}
