@@ -2,7 +2,7 @@ name: Replay GA4 consent diagnostics
 on:
   push:
     branches: ['diagnose/157-consented-page-view']
-    paths: ['replay-157.mjs', '.github/workflows/replay-157.yml']
+    paths: ['replay-157.mjs', 'acceptance-157.mjs', 'replay-route-157.mjs', '.github/workflows/replay-157.yml']
 permissions:
   contents: read
 jobs:
@@ -13,3 +13,7 @@ jobs:
       - uses: actions/checkout@v5
       - run: npm install --no-save --ignore-scripts playwright@1.56.1
       - run: xvfb-run -a node replay-157.mjs
+      - name: Verify consent, privacy signals, listing routes and revocation in both languages
+        run: xvfb-run -a node acceptance-157.mjs
+        env:
+          PORTAL_ARCHIVED_REPLAY: '1'
