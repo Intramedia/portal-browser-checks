@@ -12,7 +12,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: 253110e08ae254583ea9926df71eedb6d5c4014e
+          ref: 1f3aa57006a9d5d9e63301791a45aeab02bd049e
           persist-credentials: false
       - run: npm install --no-save --ignore-scripts playwright@1.56.1
       - run: xvfb-run -a node acceptance-157.mjs
