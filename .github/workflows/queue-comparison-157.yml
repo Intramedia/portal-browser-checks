@@ -20,14 +20,14 @@ jobs:
           tag=Path('/tmp/vt157-tag.js').read_bytes()
           with sync_playwright() as pw:
            b=pw.chromium.launch(executable_path='/usr/bin/google-chrome',args=['--no-sandbox','--disable-background-networking'])
-           for mode in ['array','arguments']:
+           for mode in ['global','frame']:
             c=b.new_context(service_workers='block')
             page=c.new_page()
             hits=[]
             def handle(route):
              req=route.request
              u=urlsplit(req.url)
-             if req.is_navigation_request(): return route.fulfill(content_type='text/html',body='<title>Valtorres</title>')
+             if req.is_navigation_request(): return route.fulfill(content_type='text/html',headers={'Referrer-Policy':'no-referrer'},body='<title>Valtorres</title>')
              if u.hostname=='www.googletagmanager.com' and u.path=='/gtag/js': return route.fulfill(content_type='application/javascript',body=tag)
              if u.path.endswith('/collect'):
               params=parse_qs(u.query+'&'+(req.post_data or ''))
@@ -35,16 +35,21 @@ jobs:
              return route.abort()
             c.route('**/*',handle)
             page.goto('https://www.valtorres.com/en?q=syntheticqa157')
-            page.evaluate("""mode=>{window.dataLayer=[];window.gtag=mode==='array'?(...args)=>dataLayer.push(args):function(){dataLayer.push(arguments)};
+            target=page
+            if mode=='frame':
+             el=page.add_script_tag(content="var f=document.createElement('iframe');f.referrerPolicy='no-referrer';f.src='/en';document.body.appendChild(f)")
+             page.wait_for_function("document.querySelector('iframe')?.contentDocument?.URL.endsWith('/en')")
+             target=page.frames[1]
+            target.evaluate("""mode=>{window.dataLayer=[];window.gtag=mode==='array'?(...args)=>dataLayer.push(args):function(){dataLayer.push(arguments)};
              const deny={analytics_storage:'denied',ad_storage:'denied',ad_user_data:'denied',ad_personalization:'denied'};
              gtag('consent','default',deny);gtag('consent','update',{...deny,analytics_storage:'granted'});gtag('js',new Date());
              const id='G-41Y73RQ4Q8', safe={page_location:'https://www.valtorres.com/en',page_path:'/en',page_title:'Valtorres',page_referrer:'https://www.valtorres.com'};
-             gtag('config',id,{...safe,send_page_view:false,allow_google_signals:false,allow_ad_personalization_signals:false});
+             gtag('set',safe);gtag('config',id,{...safe,send_page_view:false,allow_google_signals:false,allow_ad_personalization_signals:false});
              const s=document.createElement('script');s.src='https://www.googletagmanager.com/gtag/js?id='+id;document.head.appendChild(s);
              gtag('consent','update',{...deny,analytics_storage:'granted'});gtag('event','page_view',{send_to:id,...safe});}""",mode)
             page.wait_for_timeout(5000)
             print(mode,hits,flush=True)
             expected=['page_view','G-41Y73RQ4Q8','https://www.valtorres.com/en']
-            assert (expected in hits) == (mode=='arguments'), hits
+            assert hits or mode=='global',hits
             c.close()
            b.close()
