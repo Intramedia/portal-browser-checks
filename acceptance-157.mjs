@@ -63,7 +63,21 @@ async function run(lang, mode) {
       if (mode==='yes') {
         await dialog.getByRole('checkbox').check();
         await dialog.getByRole('button',{name:/accept|aceptar/i}).click();
-        for(let i=0;i<12 && !hits.some(h=>h.event==='page_view');i++) await pause(1000);
+        const expectedView = h => h.event === 'page_view' && h.id === id && h.location === origin+'/'+lang;
+        for (let i=0; i<12 && !hits.some(expectedView) && violations.length===0; i++) await pause(1000);
+        if (!hits.some(expectedView) || violations.length) {
+          const consent = await context.cookies(origin);
+          const granted = name => consent.some(c=>c.name===name && c.value==='granted');
+          const tagFrame = page.frames().find(f=>f.parentFrame() && [origin+'/ga4-context.html',origin+'/'+lang].includes(f.url()));
+          console.log(JSON.stringify({lang,mode,diagnostic:{
+            firstPartyGranted:granted('vt_analytics'),googleGranted:granted('vt_ga4_consent'),
+            framePresent:Boolean(tagFrame),sanitizedFrame:tagFrame?.url()===origin+'/'+lang,
+            tagElement:tagFrame ? await tagFrame.locator('script[src^="https://www.googletagmanager.com/gtag/js"]').count()>0 : false,
+            googleRequests:hits.length,pageViews:hits.filter(h=>h.event==='page_view').length,
+            expectedStreamPageViews:hits.filter(h=>h.event==='page_view' && h.id===id).length,
+            unexpectedLocation:violations.includes('unexpected location')
+          }}));
+        }
         assert.deepEqual(violations,[]);
         const view=hits.find(h=>h.event==='page_view' && h.id===id && h.location===origin+'/'+lang);
         assert.ok(view,'no sanitized page_view from real tag');
