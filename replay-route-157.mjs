@@ -3,6 +3,10 @@ import {createHash} from 'node:crypto';
 
 const origin='https://www.valtorres.com', id='G-41Y73RQ4Q8', marker='syntheticqa157';
 const files=[
+  ["0jz2a2rta438h.js","29pam56dkvtfv.js","31abc99f099bbf90d5879075efb743dd908734f65213057f31ca82f07c87bb8b"],
+  ["22vvcz0uj1-dx.js","40wr7yjbib-r4.js","9a77c513b404b0ae70982b667b30ffc5f711113665fa9f98da965e86b390401e"],
+  ["10b_sey0ko1uh.js","1myidv9ykpfxg.js","c587436e88c3de007291903bd830e54df309dc1168c5d33363f58a596c6e6805"],
+  ["3p7s3th7er0z2.js","0pu1u872ae19q.js","d6a7c52d9fe633e409d3c116b9eed7f3ffd447cd9cb08b86101bdeef4933ee40"],
   ['3sxddnd4goy-4.js','2q369a6zmp28m.js','4721fcb1a34196fb2512dcdecfd2c62ca1d9008e1a19e4453d9f617f097c4c60'],
   ['0ueil6g62aluf.js','0_uxl5jxfunj2.js','55ef6aecf15a7d99a00735cc2c7ee13576ce6537d173e6f2c0301debe16e6064']
 ];
