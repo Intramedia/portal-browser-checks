@@ -96,7 +96,17 @@ async function run(lang, mode) {
               [r.url(),r.postData()||'',r.headers().referer||''].some(x=>x.includes(slug))) leaked=true;
         });
         await visit('/listings/'+slug+'?q='+marker);
-        await pause(2500);
+        for(let i=0;i<12&&!hits.some(h=>h.event==='listing_view' && h.location===origin+'/'+lang+'/listings/detail');i++)await pause(1000);
+        if(!hits.some(h=>h.event==='listing_view' && h.location===origin+'/'+lang+'/listings/detail')){
+          const current=new URL(page.url());
+          console.log(JSON.stringify({lang,listingDiagnostic:{
+            reachedSelectedDetail:current.pathname.replace(/\/$/,'')===href.replace(/\/$/,''),
+            reservedRoute:['new','search','inquire','map','saved'].includes(slug),
+            frame:page.frames().some(f=>f.parentFrame() && f.url()===origin+'/'+lang+'/listings/detail'),
+            targetPageViews:hits.filter(h=>h.event==='page_view'&&h.id===id).length,
+            listingEvents:hits.filter(h=>h.event==='listing_view').length
+          }}));
+        }
         assert.equal(leaked,false,'listing slug transmitted');
         assert.ok(hits.some(h=>h.event==='listing_view' && h.location===origin+'/'+lang+'/listings/detail'),'missing sanitized listing view');
         await visit('/contact?q='+marker);
@@ -119,5 +129,10 @@ async function run(lang, mode) {
   } finally {await context.close();}
 }
 try {
-  for(const lang of ['en','es']) for(const mode of ['fresh','first','reject','dnt','gpc','private','yes']) await run(lang,mode);
+  for(const lang of ['en','es']) for(const mode of ['fresh','first','reject','dnt','gpc','private','yes']){
+    try{await run(lang,mode);}catch(error){
+      if(process.env.PORTAL_ARCHIVED_REPLAY!=='1')throw error;
+      console.error(lang,mode,error.message.split('\n')[0]);process.exitCode=1;
+    }
+  }
 } finally {await browser.close();}
