@@ -10,6 +10,10 @@ const gaCookie = c => /^_(ga($|_)|gid$|gat($|_))/.test(c.name);
 async function run(lang, mode) {
   const context = await browser.newContext({locale:lang});
   try {
+    if(process.env.PORTAL_ARCHIVED_REPLAY==='1'){
+      const {installArchivedReplay}=await import('./replay-route-157.mjs');
+      await installArchivedReplay(context);
+    }
     const both = ['dnt','gpc','private'].includes(mode);
     if (both || mode === 'first') {
       const names = both ? ['vt_analytics','vt_ga4_consent'] : ['vt_analytics'];
