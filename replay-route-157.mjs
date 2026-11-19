@@ -22,11 +22,16 @@ export async function installArchivedReplay(context) {
   await context.route('**/*',async route=>{
     const req=route.request(),u=new URL(req.url());
     if(u.origin===origin && req.method()==='GET'){
-      const bytes=assets.get(u.pathname.split('/').pop());
+      const basename=u.pathname.split('/').pop();
+      const match=files.find(([off,on])=>off===basename||on===basename);
+      const bytes=match ? assets.get(match[1]) : undefined;
       if(bytes)return route.fulfill({contentType:'application/javascript',body:bytes});
       if(req.isNavigationRequest() && /^\/(en|es)(?:\/|$)/.test(u.pathname)){
         const res=await route.fetch({url:origin+u.pathname,maxRedirects:0});
-        if(res.status()>=300 && res.status()<400)return route.fulfill({response:res});
+        if(res.status()>=300 && res.status()<400){
+          console.log(JSON.stringify({navigationRedirect:res.status(),listing:u.pathname.includes('/listings')}));
+          return route.fulfill({response:res});
+        }
         const headers={...res.headers(),'referrer-policy':'strict-origin'};
         let html=await res.text();
         const matched=files.filter(([off])=>html.includes(off)).length;
