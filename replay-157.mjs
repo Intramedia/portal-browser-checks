@@ -19,7 +19,7 @@ assert.equal(tagResponse.status,200);
 const tag=Buffer.from(await tagResponse.arrayBuffer());
 const browser=await chromium.launch({channel:'chrome',headless:false});
 try {
- for(const lang of ['en','es']){
+ for(const policy of ['frame-only','frame-and-page']) for(const lang of ['en','es']){
   const context=await browser.newContext({locale:lang,serviceWorkers:'block'});
   const page=await context.newPage();
   let scriptRequests=0, swapped=0, frameLoads=0, integrityViolation=false;
@@ -28,7 +28,11 @@ try {
   await context.route('**/*', async route=>{
     const req=route.request(),u=new URL(req.url());
     if(u.origin===origin && req.method()==='GET'){
-      if(u.pathname==='/ga4-context.html') frameLoads++;
+      if(u.pathname==='/ga4-context.html'){
+        frameLoads++;
+        const res=await route.fetch({maxRedirects:0});assert.equal(res.status(),200);
+        return route.fulfill({response:res,headers:{...res.headers(),'referrer-policy':'no-referrer'}});
+      }
       const asset=assets.get(u.pathname.split('/').pop());
       if(asset){swapped++;return route.fulfill({contentType:'application/javascript',body:asset});}
       if(u.pathname==='/'+lang && req.isNavigationRequest() && !req.frame().parentFrame()){
@@ -36,7 +40,8 @@ try {
         assert.equal(res.status(),200);
         let html=await res.text();
         for(const [off,on] of files){assert.ok(html.includes(off));html=html.replaceAll(off,on);}
-        return route.fulfill({response:res,body:html});
+        const headers={...res.headers()};if(policy==='frame-and-page')headers['referrer-policy']='strict-origin';
+        return route.fulfill({response:res,headers,body:html});
       }
       if(u.pathname.startsWith('/api/'))return route.abort();
       return route.continue();
@@ -73,8 +78,9 @@ try {
     pageViewQueued:Array.from(window.dataLayer||[]).some(c=>c?.[0]==='event'&&c[1]==='page_view'),
     ownArguments:Array.from(window.dataLayer||[]).filter(c=>c?.[0]==='event'&&c[1]==='page_view').every(c=>Object.getPrototypeOf(c)===Object.prototype)
   })):null;
-  console.log(JSON.stringify({lang,swapped,firstPartyGranted:grant('vt_analytics'),googleGranted:grant('vt_ga4_consent'),frameLoads,sanitizedFrame:frame?.url()===origin+'/'+lang,scriptRequests,queued,events,integrityViolation,leakFields:[...leakFields]}));
-  assert.equal(swapped,2);if(integrityViolation)process.exitCode=1;
+  console.log(JSON.stringify({policy,lang,swapped,firstPartyGranted:grant('vt_analytics'),googleGranted:grant('vt_ga4_consent'),frameLoads,sanitizedFrame:frame?.url()===origin+'/'+lang,scriptRequests,queued,events,integrityViolation,leakFields:[...leakFields]}));
+  assert.equal(swapped,2);if(integrityViolation && policy==='frame-and-page')process.exitCode=1;
+  assert.ok(events.some(e=>e.pageView&&e.target&&e.safe));
   await context.close();
  }
 } finally {await browser.close();}
