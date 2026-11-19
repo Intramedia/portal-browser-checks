@@ -37,7 +37,7 @@ async function run(lang, mode) {
         const event = params.get('en');
         const location = params.get('dl');
         if (params.get('tid') && params.get('tid') !== id) violations.push('wrong stream');
-        if (event && (!location || ![origin+'/'+lang,origin+'/'+lang+'/privacy',origin+'/'+lang+'/listings/detail',origin+'/'+lang+'/contact'].includes(location))) violations.push('unexpected location');
+        if (event && (!location || ![origin+'/'+lang,origin+'/'+lang+'/privacy',origin+'/'+lang+'/listings/detail',origin+'/'+lang+'/listings',origin+'/'+lang+'/contact'].includes(location))) violations.push('unexpected location');
         hits.push({event,id:params.get('tid'),location});
       }
     });
@@ -68,6 +68,19 @@ async function run(lang, mode) {
         const view=hits.find(h=>h.event==='page_view' && h.id===id && h.location===origin+'/'+lang);
         assert.ok(view,'no sanitized page_view from real tag');
         console.log(JSON.stringify({lang,mode,view}));
+        await visit('/listings');
+        const href=await page.locator('main a[href]').evaluateAll(links=>links.map(a=>a.getAttribute('href')).find(path=>/^\/(?:en|es)\/listings\/[a-z0-9-]+\/?$/.test(path)));
+        assert.ok(href,'no public listing detail link for slug check');
+        const slug=href.split('/').filter(Boolean).at(-1);
+        let leaked=false;
+        context.on('request',r=>{
+          if (/(google-analytics|googletagmanager|doubleclick)/.test(new URL(r.url()).hostname) &&
+              [r.url(),r.postData()||'',r.headers().referer||''].some(x=>x.includes(slug))) leaked=true;
+        });
+        await visit('/listings/'+slug+'?q='+marker);
+        await pause(2500);
+        assert.equal(leaked,false,'listing slug transmitted');
+        assert.ok(hits.some(h=>h.event==='listing_view' && h.location===origin+'/'+lang+'/listings/detail'),'missing sanitized listing view');
         await visit('/contact?q='+marker);
         for (const field of await page.locator('main input[type=text],main input[type=email],main input[type=tel],main textarea').all()) {
           if (await field.isVisible() && await field.isEditable()) await field.fill(marker);
