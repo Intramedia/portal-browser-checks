@@ -32,14 +32,16 @@ jobs:
              if u.path.endswith('/collect'):
               params=parse_qs(u.query+'&'+(req.post_data or ''))
               hits.append([params.get(k,[''])[0] for k in ['en','tid','dl']])
+              return route.fulfill(status=204,headers={'Access-Control-Allow-Origin':'*'})
              return route.abort()
             c.route('**/*',handle)
             page.goto('https://www.valtorres.com/en?q=syntheticqa157')
             target=page
             if mode=='frame':
-             el=page.add_script_tag(content="var f=document.createElement('iframe');f.referrerPolicy='no-referrer';f.src='/en';document.body.appendChild(f)")
-             page.wait_for_function("document.querySelector('iframe')?.contentDocument?.URL.endsWith('/en')")
+             el=page.add_script_tag(content="var f=document.createElement('iframe');f.referrerPolicy='no-referrer';f.src='/ga4-context.html';document.body.appendChild(f)")
+             page.wait_for_function("document.querySelector('iframe')?.contentDocument?.URL.endsWith('/ga4-context.html')")
              target=page.frames[1]
+             target.evaluate("history.replaceState(null,'','/en')")
             target.evaluate("""mode=>{window.dataLayer=[];window.gtag=mode==='array'?(...args)=>dataLayer.push(args):function(){dataLayer.push(arguments)};
              const deny={analytics_storage:'denied',ad_storage:'denied',ad_user_data:'denied',ad_personalization:'denied'};
              gtag('consent','default',deny);gtag('consent','update',{...deny,analytics_storage:'granted'});gtag('js',new Date());
@@ -50,6 +52,6 @@ jobs:
             page.wait_for_timeout(5000)
             print(mode,hits,flush=True)
             expected=['page_view','G-41Y73RQ4Q8','https://www.valtorres.com/en']
-            assert hits or mode=='global',hits
+            if mode=='frame': assert hits==[expected],hits
             c.close()
            b.close()
