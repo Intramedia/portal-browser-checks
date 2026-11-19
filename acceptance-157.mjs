@@ -4,11 +4,15 @@ import { chromium } from 'playwright';
 const origin = 'https://www.valtorres.com';
 const id = 'G-41Y73RQ4Q8';
 const marker = 'syntheticqa157';
-const browser = await chromium.launch({channel:'chrome', headless:false});
+const archivedReplay = process.env.PORTAL_ARCHIVED_REPLAY === '1';
+const browser = await chromium.launch({
+  channel:'chrome', headless:false,
+  args: archivedReplay ? ['--host-resolver-rules=MAP *.google-analytics.com ~NOTFOUND, MAP *.googletagmanager.com ~NOTFOUND, MAP *.analytics.google.com ~NOTFOUND, MAP *.doubleclick.net ~NOTFOUND'] : []
+});
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const gaCookie = c => /^_(ga($|_)|gid$|gat($|_))/.test(c.name);
 async function run(lang, mode) {
-  const context = await browser.newContext({locale:lang});
+  const context = await browser.newContext({locale:lang,serviceWorkers:archivedReplay?'block':'allow'});
   try {
     if(process.env.PORTAL_ARCHIVED_REPLAY==='1'){
       const {installArchivedReplay}=await import('./replay-route-157.mjs');
