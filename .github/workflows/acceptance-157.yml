@@ -1,0 +1,19 @@
+name: Controlled analytics acceptance
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/acceptance-157.yml']
+permissions:
+  contents: read
+jobs:
+  browser:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - run: npm install --no-save --ignore-scripts playwright@1.56.1
+      - run: google-chrome --version
+      - run: xvfb-run -a node acceptance-157.mjs
