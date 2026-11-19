@@ -24,6 +24,7 @@ try {
   const page=await context.newPage();
   let scriptRequests=0, swapped=0, frameLoads=0, integrityViolation=false;
   const events=[];
+  const leakFields=new Set();
   await context.route('**/*', async route=>{
     const req=route.request(),u=new URL(req.url());
     if(u.origin===origin && req.method()==='GET'){
@@ -47,7 +48,12 @@ try {
       for(const line of (req.postData()||'').split('\n')){
         const p=new URLSearchParams(u.search);for(const [k,v] of new URLSearchParams(line))p.set(k,v);
         const raw=[u.href,line,req.headers().referer||''].join(' ');
-        if(raw.includes(marker)||raw.includes('G-CBL2BKYYE7'))integrityViolation=true;
+        if(raw.includes(marker)||raw.includes('G-CBL2BKYYE7')) {
+          integrityViolation=true;
+          for(const [key,value] of p) if(value.includes(marker)) leakFields.add(/^[a-z0-9_.]{1,30}$/i.test(key)?key:'other');
+          if((req.headers().referer||'').includes(marker))leakFields.add('HTTP Referer');
+          if(raw.includes('G-CBL2BKYYE7'))leakFields.add('corporate ID');
+        }
         if(p.get('en'))events.push({pageView:p.get('en')==='page_view',target:p.get('tid')===id,safe:p.get('dl')===origin+'/'+lang});
       }
       return route.fulfill({status:204,headers:{'access-control-allow-origin':'*'}});
@@ -67,8 +73,8 @@ try {
     pageViewQueued:Array.from(window.dataLayer||[]).some(c=>c?.[0]==='event'&&c[1]==='page_view'),
     ownArguments:Array.from(window.dataLayer||[]).filter(c=>c?.[0]==='event'&&c[1]==='page_view').every(c=>Object.getPrototypeOf(c)===Object.prototype)
   })):null;
-  console.log(JSON.stringify({lang,swapped,firstPartyGranted:grant('vt_analytics'),googleGranted:grant('vt_ga4_consent'),frameLoads,sanitizedFrame:frame?.url()===origin+'/'+lang,scriptRequests,queued,events,integrityViolation}));
-  assert.equal(swapped,2);assert.equal(integrityViolation,false);
+  console.log(JSON.stringify({lang,swapped,firstPartyGranted:grant('vt_analytics'),googleGranted:grant('vt_ga4_consent'),frameLoads,sanitizedFrame:frame?.url()===origin+'/'+lang,scriptRequests,queued,events,integrityViolation,leakFields:[...leakFields]}));
+  assert.equal(swapped,2);if(integrityViolation)process.exitCode=1;
   await context.close();
  }
 } finally {await browser.close();}
