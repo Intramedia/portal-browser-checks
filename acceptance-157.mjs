@@ -61,7 +61,9 @@ async function run(lang, mode) {
     if (mode === 'private') {
       for (const path of ['/sign-in','/account','/admin','/reply/'+marker]) {await visit(path); await quiet();}
     } else {
-      await visit('?q='+marker+'&email='+marker+'%40example.test&token='+marker);
+      // The homepage redirects q searches to /listings. Keep this observation on the homepage.
+      await visit('?email='+marker+'%40example.test&token='+marker);
+      assert.equal(new URL(page.url()).pathname, '/'+lang);
       await quiet();
       const dialog=page.getByRole('dialog').filter({has:page.locator('input[type=checkbox]')});
       if (mode==='reject') {
@@ -90,8 +92,10 @@ async function run(lang, mode) {
         const view=hits.find(h=>h.event==='page_view' && h.id===id && h.location===origin+'/'+lang);
         assert.ok(view,'no sanitized page_view from real tag');
         console.log(JSON.stringify({lang,mode,view}));
+        await visit('/listings?q='+marker);
+        assert.deepEqual(violations,[]);
         await visit('/listings');
-        const href=await page.locator('main a[href]').evaluateAll(links=>links.map(a=>a.getAttribute('href')).find(path=>/^\/(?:en|es)\/listings\/[a-z0-9-]+\/?$/.test(path)));
+        const href=await page.locator('main a[href]').evaluateAll(links=>links.map(a=>a.getAttribute('href')).find(path=>/^\/(?:en|es)\/listings\/[a-z0-9-]+\/?$/.test(path) && !['new','search','inquire','map','saved'].includes(path.split('/').filter(Boolean).at(-1))));
         assert.ok(href,'no public listing detail link for slug check');
         const slug=href.split('/').filter(Boolean).at(-1);
         let leaked=false;
