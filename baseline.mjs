@@ -2,7 +2,7 @@ import { chromium } from "playwright";
 
 const origin = "https://www.valtorres.com";
 const flags = ["vt_analytics", "vt_ga4_consent"];
-const browser = await chromium.launch({ headless: false });
+const browser = await chromium.launch({ headless: false, channel: "chrome" });
 let failed = false;
 try {
   for (const locale of ["en", "es"]) {
