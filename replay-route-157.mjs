@@ -25,10 +25,12 @@ export async function installArchivedReplay(context) {
       const bytes=assets.get(u.pathname.split('/').pop());
       if(bytes)return route.fulfill({contentType:'application/javascript',body:bytes});
       if(req.isNavigationRequest() && /^\/(en|es)(?:\/|$)/.test(u.pathname)){
-        const res=await route.fetch({maxRedirects:0});
+        const res=await route.fetch({url:origin+u.pathname,maxRedirects:0});
         if(res.status()>=300 && res.status()<400)return route.fulfill({response:res});
         const headers={...res.headers(),'referrer-policy':'strict-origin'};
         let html=await res.text();
+        const matched=files.filter(([off])=>html.includes(off)).length;
+        console.log(JSON.stringify({replayDocument:true,homepage:/^\/(en|es)$/.test(u.pathname),status:res.status(),matchedChunks:matched}));
         for(const [off,on] of files)html=html.replaceAll(off,on);
         return route.fulfill({response:res,headers,body:html});
       }
